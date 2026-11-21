@@ -1,0 +1,118 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated buyer or seller profile stored securely per user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID matching document ID." },
+        "displayName": { "type": "string", "description": "User display name." },
+        "email": { "type": "string", "description": "User email address (private to owner and admin)." },
+        "photoUrl": { "type": "string", "description": "Optional avatar URL." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+      },
+      "required": ["userId", "displayName", "email", "createdAt", "updatedAt"]
+    },
+    "Tractor": {
+      "title": "Tractor",
+      "description": "Used tractor listing with specs, video, usage hours, pricing, due amount, and condition.",
+      "type": "object",
+      "properties": {
+        "brand": { "type": "string", "description": "Tractor brand name." },
+        "model": { "type": "string", "description": "Tractor model name." },
+        "title": { "type": "string", "description": "Listing headline in Bengali." },
+        "year": { "type": "integer", "description": "Manufacturing year." },
+        "originalPrice": { "type": "integer", "description": "Original/market price in BDT." },
+        "usedHours": { "type": "integer", "description": "Total used engine hours." },
+        "totalDue": { "type": "integer", "description": "Remaining total due/installment amount in BDT." },
+        "sellingPrice": { "type": "integer", "description": "Asking selling price in BDT." },
+        "condition": {
+          "type": "string",
+          "enum": ["EXCELLENT", "GOOD", "FAIR", "NEEDS_SERVICE"],
+          "description": "Current mechanical condition tier."
+        },
+        "conditionNote": { "type": "string", "description": "Detailed condition summary." },
+        "features": { "type": "array", "description": "Bounded list of key tractor features (max 12)." },
+        "location": { "type": "string", "description": "District/upazila location." },
+        "imageKey": { "type": "string", "description": "Bundled drawable resource key." },
+        "videoKey": { "type": "string", "description": "Bundled raw video resource key." },
+        "videoUrl": { "type": "string", "description": "Optional external video URL." },
+        "status": {
+          "type": "string",
+          "enum": ["available", "reserved", "sold"],
+          "description": "Listing availability status."
+        },
+        "createdBy": { "type": "string", "description": "Admin UID who created the listing." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+      },
+      "required": [
+        "brand", "model", "title", "year", "originalPrice", "usedHours",
+        "totalDue", "sellingPrice", "condition", "conditionNote", "features",
+        "location", "imageKey", "videoKey", "status", "createdBy", "createdAt", "updatedAt"
+      ]
+    },
+    "TractorOrder": {
+      "title": "TractorOrder",
+      "description": "Buyer order submission containing customer contact info and tractor reference.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Authenticated buyer UID." },
+        "tractorId": { "type": "string", "description": "Referenced tractor document ID." },
+        "tractorTitle": { "type": "string", "description": "Tractor title snapshot." },
+        "tractorBrand": { "type": "string", "description": "Tractor brand snapshot." },
+        "sellingPrice": { "type": "integer", "description": "Selling price snapshot in BDT." },
+        "customerName": { "type": "string", "description": "Buyer full name." },
+        "address": { "type": "string", "description": "Buyer delivery address." },
+        "phone": { "type": "string", "description": "Buyer mobile phone number." },
+        "note": { "type": "string", "description": "Optional buyer note." },
+        "status": {
+          "type": "string",
+          "enum": ["PENDING", "CONFIRMED", "DELIVERED", "CANCELLED"],
+          "description": "Order processing status."
+        },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+      },
+      "required": [
+        "userId", "tractorId", "tractorTitle", "tractorBrand", "sellingPrice",
+        "customerName", "address", "phone", "status", "createdAt", "updatedAt"
+      ]
+    },
+    "TractorReview": {
+      "title": "TractorReview",
+      "description": "User rating (1-5 stars) and text review for a tractor.",
+      "type": "object",
+      "properties": {
+        "tractorId": { "type": "string", "description": "Referenced tractor document ID." },
+        "tractorStatus": { "type": "string", "description": "Denormalized tractor status ('available')." },
+        "userId": { "type": "string", "description": "Reviewer UID." },
+        "reviewerName": { "type": "string", "description": "Reviewer display name." },
+        "rating": { "type": "integer", "description": "Star rating from 1 to 5." },
+        "comment": { "type": "string", "description": "Review text comment." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+      },
+      "required": ["tractorId", "tractorStatus", "userId", "reviewerName", "rating", "comment", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles keyed by Firebase Auth UID."
+    },
+    "/tractors/{tractorId}": {
+      "schema": { "$ref": "#/entities/Tractor" },
+      "description": "Used tractor inventory managed by admins and browsed by buyers."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/TractorOrder" },
+      "description": "Customer tractor orders visible to the ordering buyer and admins."
+    },
+    "/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/TractorReview" },
+      "description": "Customer ratings and reviews on tractors."
+    }
+  }
+}

@@ -1,0 +1,220 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HELPERS ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email_verified == true && request.auth.token.email == "bkbiswas97@gmail.com") ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // --- VALIDATION HELPERS ---
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 60 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 120 &&
+             (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 500)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidTractor(data) {
+      return data.brand is string && data.brand.size() >= 1 && data.brand.size() <= 50 &&
+             data.model is string && data.model.size() >= 1 && data.model.size() <= 80 &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 120 &&
+             data.year is int && data.year >= 1990 && data.year <= 2030 &&
+             data.originalPrice is int && data.originalPrice >= 0 && data.originalPrice <= 50000000 &&
+             data.usedHours is int && data.usedHours >= 0 && data.usedHours <= 100000 &&
+             data.totalDue is int && data.totalDue >= 0 && data.totalDue <= 50000000 &&
+             data.sellingPrice is int && data.sellingPrice >= 0 && data.sellingPrice <= 50000000 &&
+             data.condition in ['EXCELLENT', 'GOOD', 'FAIR', 'NEEDS_SERVICE'] &&
+             data.conditionNote is string && data.conditionNote.size() >= 1 && data.conditionNote.size() <= 300 &&
+             data.features is list && data.features.size() <= 12 && (data.features.size() == 0 || data.features[0] is string) &&
+             data.location is string && data.location.size() >= 1 && data.location.size() <= 80 &&
+             data.imageKey is string && data.imageKey.size() >= 1 && data.imageKey.size() <= 60 &&
+             data.videoKey is string && data.videoKey.size() >= 1 && data.videoKey.size() <= 60 &&
+             (!('videoUrl' in data) || (data.videoUrl is string && data.videoUrl.size() <= 500)) &&
+             data.status in ['available', 'reserved', 'sold'] &&
+             data.createdBy is string && data.createdBy.size() >= 1 && data.createdBy.size() <= 128 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidOrder(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             isValidId(data.tractorId) &&
+             data.tractorTitle is string && data.tractorTitle.size() >= 2 && data.tractorTitle.size() <= 120 &&
+             data.tractorBrand is string && data.tractorBrand.size() >= 1 && data.tractorBrand.size() <= 50 &&
+             data.sellingPrice is int && data.sellingPrice >= 0 && data.sellingPrice <= 50000000 &&
+             data.customerName is string && data.customerName.size() >= 2 && data.customerName.size() <= 80 &&
+             data.address is string && data.address.size() >= 5 && data.address.size() <= 250 &&
+             data.phone is string && data.phone.size() >= 6 && data.phone.size() <= 20 &&
+             (!('note' in data) || (data.note is string && data.note.size() <= 300)) &&
+             data.status in ['PENDING', 'CONFIRMED', 'DELIVERED', 'CANCELLED'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidReview(data) {
+      return isValidId(data.tractorId) &&
+             data.tractorStatus in ['available', 'reserved', 'sold'] &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.reviewerName is string && data.reviewerName.size() >= 1 && data.reviewerName.size() <= 60 &&
+             data.rating is int && data.rating >= 1 && data.rating <= 5 &&
+             data.comment is string && data.comment.size() >= 1 && data.comment.size() <= 500 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    // --- COLLECTIONS ---
+
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && request.auth.uid == adminUid;
+      allow list, create, update, delete: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'email', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'email', 'photoUrl', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoUrl', 'updatedAt']);
+
+      allow delete: if false;
+    }
+
+    match /tractors/{tractorId} {
+      allow get: if isSignedIn() && isValidId(tractorId) && (existing().status == 'available' || isAdmin());
+      allow list: if isSignedIn() && (existing().status == 'available' || isAdmin());
+
+      allow create: if isAdmin() &&
+                       isValidId(tractorId) &&
+                       incoming().createdBy == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'brand', 'model', 'title', 'year', 'originalPrice', 'usedHours',
+                         'totalDue', 'sellingPrice', 'condition', 'conditionNote', 'features',
+                         'location', 'imageKey', 'videoKey', 'status', 'createdBy', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'brand', 'model', 'title', 'year', 'originalPrice', 'usedHours',
+                         'totalDue', 'sellingPrice', 'condition', 'conditionNote', 'features',
+                         'location', 'imageKey', 'videoKey', 'videoUrl', 'status', 'createdBy', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidTractor(incoming());
+
+      allow update: if isAdmin() &&
+                       isValidId(tractorId) &&
+                       isValidTractor(incoming()) &&
+                       incoming().createdBy == existing().createdBy &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'brand', 'model', 'title', 'year', 'originalPrice', 'usedHours',
+                         'totalDue', 'sellingPrice', 'condition', 'conditionNote', 'features',
+                         'location', 'imageKey', 'videoKey', 'videoUrl', 'status', 'updatedAt'
+                       ]);
+
+      allow delete: if isAdmin() && isValidId(tractorId);
+    }
+
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && isValidId(orderId) && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(orderId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       incoming().keys().hasAll([
+                         'userId', 'tractorId', 'tractorTitle', 'tractorBrand', 'sellingPrice',
+                         'customerName', 'address', 'phone', 'status', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'tractorId', 'tractorTitle', 'tractorBrand', 'sellingPrice',
+                         'customerName', 'address', 'phone', 'note', 'status', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidOrder(incoming()) &&
+                       exists(/databases/$(database)/documents/tractors/$(incoming().tractorId));
+
+      allow update: if isSignedIn() && isValidId(orderId) && isValidOrder(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().tractorId == existing().tractorId &&
+                       incoming().createdAt == existing().createdAt && (
+                         (isAdmin() &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'note', 'updatedAt'])) ||
+                         (existing().userId == request.auth.uid &&
+                          existing().status == 'PENDING' &&
+                          incoming().status == 'CANCELLED' &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+                       );
+
+      allow delete: if isAdmin() && isValidId(orderId);
+    }
+
+    match /reviews/{reviewId} {
+      allow get: if isSignedIn() && isValidId(reviewId) && (existing().tractorStatus == 'available' || existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().tractorStatus == 'available' || existing().userId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(reviewId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().tractorStatus == 'available' &&
+                       incoming().keys().hasAll([
+                         'tractorId', 'tractorStatus', 'userId', 'reviewerName',
+                         'rating', 'comment', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'tractorId', 'tractorStatus', 'userId', 'reviewerName',
+                         'rating', 'comment', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidReview(incoming()) &&
+                       exists(/databases/$(database)/documents/tractors/$(incoming().tractorId)) &&
+                       get(/databases/$(database)/documents/tractors/$(incoming().tractorId)).data.status == 'available';
+
+      allow update: if isSignedIn() &&
+                       isValidId(reviewId) &&
+                       isValidReview(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().tractorId == existing().tractorId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (existing().userId == request.auth.uid || isAdmin()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['reviewerName', 'rating', 'comment', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(reviewId) && (existing().userId == request.auth.uid || isAdmin());
+    }
+  }
+}

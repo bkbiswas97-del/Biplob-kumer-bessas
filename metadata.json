@@ -1,0 +1,6 @@
+{
+  "name": "পুরাতন ট্রাক্টর বাজার",
+  "description": "পুরাতন ট্রাক্টর কেনাবেচা, ভিডিও ও ফিচার দেখা, অর্ডার করা এবং এডমিন প্যানেল পরিচালনার অ্যাপ।",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
